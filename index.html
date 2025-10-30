@@ -43,19 +43,25 @@
     </nav>
   </header>
 
-  <!-- Briefing: Date • Ticker • Weather -->
+  <!-- Briefing: Date • Mood+Ticker (Grid location 3) • Weather -->
   <section class="gn-briefing">
     <div class="briefing-left">
       <h1 class="display-title">Your briefing</h1>
       <div id="briefingDate" class="briefing-date"></div>
     </div>
-    <div id="marketTicker" class="ticker" aria-live="polite"></div>
+
+    <!-- LOCATION 3: two-row block (1) Nation’s Mood (2) Ticker -->
+    <div class="briefing-center">
+      <div id="moodStrip" class="mood-strip" aria-live="polite"></div>
+      <div id="marketTicker" class="ticker" aria-live="polite"></div>
+    </div>
+
     <div id="weatherCard" class="weather-card" aria-live="polite"></div>
   </section>
 
   <!-- 3-column layout -->
   <main class="layout">
-    <!-- LEFT: PINNED as a block card with separators -->
+    <!-- LEFT: PINNED -->
     <aside class="left">
       <div class="block-card">
         <div class="block-header">
@@ -87,7 +93,7 @@
       </div>
     </section>
 
-    <!-- RIGHT: TRENDING as a block card with separators -->
+    <!-- RIGHT: TRENDING + DAILY -->
     <aside class="right">
       <div class="block-card">
         <div class="block-header">
