@@ -1,4 +1,4 @@
-// api/topics.js
+// Serverless function: GET /api/topics
 import { fetchAllArticles, aggregateTopics, allowOrigin } from "./_utils.js";
 
 export default async function handler(req, res) {
@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     const articles = await fetchAllArticles({ filterLabel: "all" });
     const topics = aggregateTopics(articles);
     res.status(200).json({ updatedAt: Date.now(), topics });
-  } catch (e) {
+  } catch {
     res.status(200).json({ updatedAt: Date.now(), topics: [] });
   }
 }
