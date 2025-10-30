@@ -92,6 +92,22 @@ h1,h2,h3{ margin:0 0 .6rem }
 .briefing-left h1{ font-size:2.1rem; font-weight:800 }
 .briefing-date{ color:var(--muted) }
 
+/* New: two-row center (Mood + Ticker) */
+.briefing-center{ display:flex; flex-direction:column; gap:.6rem; min-width:0 }
+
+/* Mood strip */
+.mood-strip{
+  background:var(--card); border:1px solid var(--border);
+  border-radius:999px; padding:.55rem .85rem;
+  display:flex; align-items:baseline; gap:.7rem; flex-wrap:wrap;
+  box-shadow:var(--shadow); font-variant-numeric: tabular-nums;
+  line-height:1.1;
+}
+.mood-strip .label{ font-weight:800 }
+.mood-strip .pos{ color:var(--pos); font-weight:800 }
+.mood-strip .neu{ color:var(--muted); font-weight:800 }
+.mood-strip .neg{ color:var(--neg); font-weight:800 }
+
 /* Ticker — single line */
 .ticker{
   display:flex; align-items:center; gap:.4rem; flex-wrap:nowrap;
@@ -129,7 +145,7 @@ h1,h2,h3{ margin:0 0 .6rem }
 }
 .left,.center,.right{ display:flex; flex-direction:column }
 
-/* ===== Block card pattern (like your screenshot) ===== */
+/* ===== Block card pattern ===== */
 .block-card{
   background:var(--card); border:1px solid var(--border);
   border-radius:18px; overflow:hidden; box-shadow:var(--shadow);
@@ -198,19 +214,4 @@ h1,h2,h3{ margin:0 0 .6rem }
 .segment{ height:100%; float:left } .segment.pos{ background:var(--pos) } .segment.neu{ background:var(--neu) } .segment.neg{ background:var(--neg) }
 
 /* ===== Right rail ===== */
-.topics-list,.daily-list{ display:flex; flex-direction:column; gap:.85rem; margin-top:.4rem }
-
-/* ===== Footer ===== */
-.footer{ padding:1rem 12px; color:var(--muted); border-top:1px solid var(--border); margin-top:1rem }
-
-/* ===== Responsive ===== */
-@media (max-width:1100px){
-  .gn-topbar{ grid-template-columns:1fr; row-gap:.6rem }
-  .gn-actions{ justify-content:flex-start }
-  .gn-briefing{ grid-template-columns:1fr; row-gap:.5rem }
-  .weather-card{ justify-self:start }
-  .layout{ grid-template-columns:1fr }
-  .left,.right{ order:2 } .center{ order:1 }
-  .hero-slide{ grid-template-columns:1fr }
-  .hero-slide .hero-img{ max-height:200px }
-}
+.topics-list
