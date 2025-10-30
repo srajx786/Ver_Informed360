@@ -86,6 +86,26 @@ async function loadMarkets(){
   }catch{ $("#marketTicker").innerHTML = ""; }
 }
 
+/* Nation's Mood (aggregated from current articles) */
+function renderMoodStrip(){
+  const counts = { pos:0, neu:0, neg:0 };
+  for (const a of state.articles){
+    const l = a?.sentiment?.label || "neutral";
+    if (l === "positive") counts.pos++;
+    else if (l === "negative") counts.neg++;
+    else counts.neu++;
+  }
+  const total = counts.pos + counts.neu + counts.neg || 1;
+  const pct = (n)=> Math.round((n/total)*100);
+  $("#moodStrip").innerHTML =
+    `<span class="label">Nation’s Mood —</span>
+     <span class="pos">Positive ${pct(counts.pos)}%</span>
+     <span>·</span>
+     <span class="neu">Neutral ${pct(counts.neu)}%</span>
+     <span>·</span>
+     <span class="neg">Negative ${pct(counts.neg)}%</span>`;
+}
+
 /* loads */
 async function loadAll(){
   const qs = new URLSearchParams();
@@ -99,7 +119,7 @@ async function loadAll(){
   ]);
 
   state.articles = news.articles || [];
-  state.topics = (topics.topics || []).slice(0, 8); // cap right-rail
+  state.topics = (topics.topics || []).slice(0, 8);
   state.pins = state.articles.slice(0,3);
 
   if (state.category === "local" && state.profile?.city) {
@@ -126,7 +146,7 @@ function card(a){
     </a>`;
 }
 
-/* Pinned inside a block-list with separators */
+/* Pinned */
 function renderPinned(){
   $("#pinned").innerHTML = state.pins.map(a => `
     <div class="row">
@@ -167,7 +187,7 @@ function updateHero(i){
 function startHeroAuto(){ stopHeroAuto(); state.hero.timer = setInterval(()=>{ if(!state.hero.pause) updateHero(state.hero.index+1); }, 6000); }
 function stopHeroAuto(){ if(state.hero.timer) clearInterval(state.hero.timer); state.hero.timer=null; }
 
-/* Trending topics as rows with separators */
+/* Trending topics */
 function renderTopics(){
   $("#topicsList").innerHTML = state.topics.map(t=>{
     const total = (t.sentiment.pos||0)+(t.sentiment.neu||0)+(t.sentiment.neg||0);
@@ -185,6 +205,7 @@ function renderTopics(){
 function renderAll(){
   $("#briefingDate").textContent = todayStr();
   renderHero(); renderPinned(); renderNews(); renderDaily(); renderTopics();
+  renderMoodStrip(); // NEW: keep Nation’s Mood updated
   $("#year").textContent = new Date().getFullYear();
 }
 
