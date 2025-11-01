@@ -1,10 +1,7 @@
-// Shared helpers for API routes
+// Shared helpers for API routes — no fs, import the feeds JSON so Vercel bundles it
 import Parser from "rss-parser";
 import vader from "vader-sentiment";
-import fs from "fs";
-import path from "path";
-
-const FEEDS_PATH = path.join(process.cwd(), "rss-feeds.json");
+import feeds from "../rss-feeds.json" assert { type: "json" }; // <-- bundled automatically
 
 export function allowOrigin(_req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -13,13 +10,13 @@ export function allowOrigin(_req, res) {
 const parser = new Parser({
   timeout: 15000,
   headers: {
-    "User-Agent": "Informed360Bot/1.0 (+https://informed360)",
+    "User-Agent": "Informed360Bot/1.0 (+https://informed360.news)",
     "Accept": "application/rss+xml, application/xml;q=0.9,*/*;q=0.8"
   }
 });
 
-function clean(text = "") {
-  return String(text).replace(/\s+/g, " ").trim();
+function clean(s = "") {
+  return String(s).replace(/\s+/g, " ").trim();
 }
 
 function scoreSentiment(text = "") {
@@ -33,8 +30,8 @@ function scoreSentiment(text = "") {
 
 function extractImage(item = {}) {
   const c = item.content || item["content:encoded"];
-  const tryFields = [item.enclosure?.url, item.media?.content?.url, item.image?.url];
-  for (const url of tryFields) if (url && typeof url === "string") return url;
+  const tries = [item.enclosure?.url, item.media?.content?.url, item.image?.url];
+  for (const u of tries) if (u && typeof u === "string") return u;
   if (typeof c === "string") {
     const m = c.match(/<img[^>]+src="([^"]+)"/i);
     if (m) return m[1];
@@ -43,7 +40,6 @@ function extractImage(item = {}) {
 }
 
 export async function fetchAllArticles({ filterLabel = "all" } = {}) {
-  const feeds = JSON.parse(fs.readFileSync(FEEDS_PATH, "utf-8"));
   const articles = [];
 
   for (const f of feeds) {
@@ -55,55 +51,49 @@ export async function fetchAllArticles({ filterLabel = "all" } = {}) {
         const image = extractImage(item);
         const publishedAt = item.isoDate || item.pubDate || new Date().toISOString();
         const source = f.name || feed.title || "Source";
-        const sentiment = scoreSentiment(title);
         const category = f.category || "general";
+        const sentiment = scoreSentiment(title);
         const row = { title, link, image, publishedAt, source, sentiment, category };
-        if (filterLabel === "all" || row.sentiment.label === filterLabel) {
-          articles.push(row);
-        }
+        if (filterLabel === "all" || row.sentiment.label === filterLabel) articles.push(row);
       }
     } catch {
-      // ignore a failing feed; keep going
+      // skip failing feed
     }
   }
 
-  // Stable ordering
   articles.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
   return articles;
 }
 
 export function aggregateTopics(articles = []) {
   const freq = new Map();
-  const buckets = new Map();
-  const sentSum = new Map();
+  const bucket = new Map();
+  const sent = new Map();
 
-  const addWord = (w, i, s) => {
-    const key = w.toLowerCase();
-    freq.set(key, (freq.get(key) || 0) + 1);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(i);
-    const agg = sentSum.get(key) || { pos: 0, neu: 0, neg: 0 };
-    agg.pos += s.posP; agg.neu += s.neuP; agg.neg += s.negP;
-    sentSum.set(key, agg);
-  };
-
-  articles.forEach((a, i) => {
-    const words = a.title.split(/[^A-Za-z0-9]+/g).filter(w => w.length > 3);
-    words.slice(0, 8).forEach(w => addWord(w, i, a.sentiment));
+  articles.forEach((a, idx) => {
+    const words = a.title.split(/[^A-Za-z0-9]+/g).filter(w => w.length > 3).slice(0, 8);
+    words.forEach(w => {
+      const key = w.toLowerCase();
+      freq.set(key, (freq.get(key) || 0) + 1);
+      if (!bucket.has(key)) bucket.set(key, []);
+      bucket.get(key).push(idx);
+      const agg = sent.get(key) || { pos: 0, neu: 0, neg: 0 };
+      sent.set(key, { pos: agg.pos + a.sentiment.posP, neu: agg.neu + a.sentiment.neuP, neg: agg.neg + a.sentiment.negP });
+    });
   });
 
-  const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16);
-  const topics = top.map(([word, count]) => {
-    const idxs = buckets.get(word) || [];
-    const srcs = new Set(idxs.map(i => articles[i].source));
-    return {
-      title: word.toUpperCase(),
-      count,
-      sources: srcs.size,
-      sentiment: sentSum.get(word) || { pos: 0, neu: 0, neg: 0 },
-      sample: idxs.slice(0, 3).map(i => articles[i])
-    };
-  });
-
-  return topics;
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 16)
+    .map(([word, count]) => {
+      const idxs = bucket.get(word) || [];
+      const srcs = new Set(idxs.map(i => articles[i].source));
+      return {
+        title: word.toUpperCase(),
+        count,
+        sources: srcs.size,
+        sentiment: sent.get(word) || { pos: 0, neu: 0, neg: 0 },
+        sample: idxs.slice(0, 3).map(i => articles[i])
+      };
+    });
 }
