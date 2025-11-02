@@ -1,10 +1,10 @@
-/* tiny helpers */
+/* helpers */
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const fmtPct = (n) => `${Math.max(0, Math.min(100, Math.round(n)))}%`;
 async function fetchJSON(u){ const r = await fetch(u); if(!r.ok) throw new Error(await r.text()); return r.json(); }
 
-/* sentiment meter UI */
+/* sentiment meter */
 function renderSentiment(s, slim=false){
   const pos = Math.max(0, Number(s.posP ?? s.pos ?? 0));
   const neu = Math.max(0, Number(s.neuP ?? s.neu ?? 0));
@@ -25,18 +25,18 @@ function renderSentiment(s, slim=false){
     </div>`;
 }
 
-/* app state */
+/* state */
 const state = {
-  category:"home",
-  filter:"all",
-  experimental:false,
-  query:"",
-  articles:[],
-  topics:[],
-  pins:[],
+  category: "home",
+  filter: "all",
+  experimental: false,
+  query: "",
+  articles: [],
+  topics: [],
+  pins: [],
   profile: loadProfile(),
   theme: localStorage.getItem("theme") || "light",
-  hero:{ index:0, timer:null, pause:false }
+  hero: { index:0, timer:null, pause:false }
 };
 function loadProfile(){ try { return JSON.parse(localStorage.getItem("i360_profile") || "{}"); } catch { return {}; } }
 function saveProfile(p){ localStorage.setItem("i360_profile", JSON.stringify(p || {})); state.profile = p || {}; }
@@ -68,38 +68,25 @@ async function getWeather(){
   }catch{ $("#weatherCard").textContent = "Weather unavailable"; }
 }
 
-/* ====== MARKETS (client-only using Yahoo quote API) ====== */
-const Y_SYMBOLS = [
-  { y: "%5EBSESN", pretty: "BSE Sensex" },   // ^BSESN
-  { y: "%5ENSEI",  pretty: "NSE Nifty" },    // ^NSEI
-  { y: "GC%3DF",   pretty: "Gold" },         // GC=F
-  { y: "CL%3DF",   pretty: "Crude Oil" },    // CL=F
-  { y: "USDINR%3DX", pretty: "USD/INR" }     // USDINR=X
-];
+/* ===== Grid Location 3: Markets + Nation's Mood ===== */
+
+/* 1) Markets (kept exactly per your project: calls /api/markets) */
 async function loadMarkets(){
   try{
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${Y_SYMBOLS.map(s=>s.y).join(",")}`;
-    const data = await fetchJSON(url); // Yahoo allows CORS for this endpoint
-    const res = data?.quoteResponse?.result || [];
-    const map = {};
-    res.forEach(r => { map[r.symbol] = r; });
-
-    const pills = Y_SYMBOLS.map((s)=>{
-      // de-URL the symbol to match Yahoo's symbol keys
-      const symbol = decodeURIComponent(s.y.replace(/%25/g,'%'));
-      const r = map[symbol] || {};
-      const price = r.regularMarketPrice ?? null;
-      const chgPct = r.regularMarketChangePercent ?? null;
-      const cls = chgPct == null ? "" : (chgPct >= 0 ? "up" : "down");
-      const sign = chgPct == null ? "" : (chgPct >= 0 ? "▲" : "▼");
-      const pctTxt = chgPct == null ? "—" : `${sign} ${Math.abs(chgPct).toFixed(2)}%`;
-      const priceTxt = price == null ? "—" : Number(price).toLocaleString(undefined,{ maximumFractionDigits:2 });
-      return `<div class="qpill"><span class="sym">${s.pretty}</span><span class="price">${priceTxt}</span><span class="chg ${cls}">${pctTxt}</span></div>`;
+    const data = await fetchJSON("/api/markets");
+    const el = $("#marketTicker");
+    const items = (data.quotes || []).map(q=>{
+      const price = (q.price ?? "—");
+      const pct = Number(q.changePercent ?? 0);
+      const cls = isFinite(pct) ? (pct >= 0 ? "up" : "down") : "";
+      const sign = isFinite(pct) ? (pct >= 0 ? "▲" : "▼") : "";
+      const pctTxt = isFinite(pct) ? `${sign} ${Math.abs(pct).toFixed(2)}%` : "—";
+      const pTxt = typeof price === "number" ? price.toLocaleString(undefined,{maximumFractionDigits:2}) : price;
+      return `<div class="qpill"><span class="sym">${q.pretty || q.symbol}</span><span class="price">${pTxt}</span><span class="chg ${cls}">${pctTxt}</span></div>`;
     }).join("");
-
-    $("#marketTicker").innerHTML = pills;
-  }catch(e){
-    // graceful fallback: show placeholder pills, never break page
+    el.innerHTML = items || "";
+  }catch{
+    // never break UI; show safe placeholders
     $("#marketTicker").innerHTML = `
       <div class="qpill"><span class="sym">BSE Sensex</span><span class="price">—</span><span class="chg">—</span></div>
       <div class="qpill"><span class="sym">NSE Nifty</span><span class="price">—</span><span class="chg">—</span></div>
@@ -109,22 +96,24 @@ async function loadMarkets(){
   }
 }
 
-/* Nation's Mood from current article sentiments */
+/* 2) Nation's Mood (computed from current articles) */
 function renderMoodStrip(){
-  const c = { pos:0, neu:0, neg:0 };
+  const counts = { pos:0, neu:0, neg:0 };
   for (const a of state.articles){
     const l = a?.sentiment?.label || "neutral";
-    if (l === "positive") c.pos++; else if (l === "negative") c.neg++; else c.neu++;
+    if (l === "positive") counts.pos++;
+    else if (l === "negative") counts.neg++;
+    else counts.neu++;
   }
-  const total = c.pos + c.neu + c.neg || 1;
+  const total = counts.pos + counts.neu + counts.neg || 1;
   const pct = (n)=> Math.round((n/total)*100);
   $("#moodStrip").innerHTML =
     `<span class="label">Nation’s Mood —</span>
-     <span class="pos">Positive ${pct(c.pos)}%</span>
+     <span class="pos">Positive ${pct(counts.pos)}%</span>
      <span>·</span>
-     <span class="neu">Neutral ${pct(c.neu)}%</span>
+     <span class="neu">Neutral ${pct(counts.neu)}%</span>
      <span>·</span>
-     <span class="neg">Negative ${pct(c.neg)}%</span>`;
+     <span class="neg">Negative ${pct(counts.neg)}%</span>`;
 }
 
 /* data loads */
@@ -134,16 +123,16 @@ async function loadAll(){
   if (state.experimental) qs.set("experimental", "1");
   if (state.category && !["home","foryou","local"].includes(state.category)) qs.set("category", state.category);
 
-  const [news, topics] = await Promise.allSettled([
+  const [news, topics] = await Promise.all([
     fetchJSON(`/api/news${qs.toString() ? ("?" + qs.toString()) : ""}`),
     fetchJSON(`/api/topics${state.experimental ? "?experimental=1" : ""}`)
   ]);
 
-  state.articles = news.status === "fulfilled" ? (news.value.articles || []) : [];
-  state.topics   = topics.status === "fulfilled" ? (topics.value.topics || []).slice(0,8) : [];
-  state.pins     = state.articles.slice(0,3);
+  state.articles = news.articles || [];
+  state.topics = (topics.topics || []).slice(0, 8);
+  state.pins = state.articles.slice(0,3);
 
-  // filters for local / for-you
+  // optional personalization rules preserved from your app
   if (state.category === "local" && state.profile?.city) {
     const c = state.profile.city.toLowerCase();
     state.articles = state.articles.filter(a => (a.title||"").toLowerCase().includes(c) || (a.link||"").toLowerCase().includes(c));
@@ -155,7 +144,7 @@ async function loadAll(){
   renderAll();
 }
 
-/* renderers */
+/* renderers (unchanged except we call renderMoodStrip) */
 function card(a){
   return `
     <a class="news-item" href="${a.link}" target="_blank" rel="noopener">
@@ -167,6 +156,8 @@ function card(a){
       </div>
     </a>`;
 }
+
+/* Pinned inside a block-list with separators */
 function renderPinned(){
   $("#pinned").innerHTML = state.pins.map(a => `
     <div class="row">
@@ -175,22 +166,12 @@ function renderPinned(){
       ${renderSentiment(a.sentiment, true)}
     </div>`).join("");
 }
+
+/* News + Daily */
 function renderNews(){ $("#newsList").innerHTML = state.articles.slice(4, 12).map(card).join(""); }
 function renderDaily(){ $("#daily").innerHTML = state.articles.slice(12, 20).map(card).join(""); }
-function renderTopics(){
-  $("#topicsList").innerHTML = state.topics.map(t=>{
-    const total = (t.sentiment.pos||0)+(t.sentiment.neu||0)+(t.sentiment.neg||0);
-    const sent = { posP: total? (t.sentiment.pos/total)*100:0, neuP: total? (t.sentiment.neu/total)*100:0, negP: total? (t.sentiment.neg/total)*100:0 };
-    return `
-      <div class="row">
-        <div class="row-title">${t.title.split("|")[0]}</div>
-        <div class="row-meta"><span>${t.count} articles</span> · <span>${t.sources} sources</span></div>
-        ${renderSentiment(sent, true)}
-      </div>`;
-  }).join("");
-}
 
-/* hero carousel (unchanged) */
+/* HERO (unchanged) */
 function renderHero(){
   const slides = state.articles.slice(0,4);
   const track = $("#heroTrack"); const dots = $("#heroDots");
@@ -217,13 +198,29 @@ function updateHero(i){
 function startHeroAuto(){ stopHeroAuto(); state.hero.timer = setInterval(()=>{ if(!state.hero.pause) updateHero(state.hero.index+1); }, 6000); }
 function stopHeroAuto(){ if(state.hero.timer) clearInterval(state.hero.timer); state.hero.timer=null; }
 
-/* glue + interactions */
+/* Trending topics */
+function renderTopics(){
+  $("#topicsList").innerHTML = state.topics.map(t=>{
+    const total = (t.sentiment.pos||0)+(t.sentiment.neu||0)+(t.sentiment.neg||0);
+    const sent = { posP: total? (t.sentiment.pos/total)*100:0, neuP: total? (t.sentiment.neu/total)*100:0, negP: total? (t.sentiment.neg/total)*100:0 };
+    return `
+      <div class="row">
+        <div class="row-title">${t.title.split("|")[0]}</div>
+        <div class="row-meta"><span>${t.count} articles</span> · <span>${t.sources} sources</span></div>
+        ${renderSentiment(sent, true)}
+      </div>`;
+  }).join("");
+}
+
+/* glue */
 function renderAll(){
   $("#briefingDate").textContent = todayStr();
   renderHero(); renderPinned(); renderNews(); renderDaily(); renderTopics();
-  renderMoodStrip();
+  renderMoodStrip();               // <— NEW: Nation’s Mood
   $("#year").textContent = new Date().getFullYear();
 }
+
+/* interactions (unchanged) */
 $$(".chip[data-sent]").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     $$(".chip[data-sent]").forEach(b=>b.classList.remove("active"));
@@ -233,6 +230,7 @@ $$(".chip[data-sent]").forEach(btn=>{
 });
 $("#expChip")?.addEventListener("click", ()=>{ state.experimental = !state.experimental; $("#expChip").classList.toggle("active", state.experimental); loadAll(); });
 $("#searchForm")?.addEventListener("submit", (e)=>{ e.preventDefault(); state.query = $("#searchInput").value.trim(); renderAll(); });
+$("#searchInput")?.addEventListener("input", (e)=>{ state.query = e.target.value.trim(); renderAll(); });
 
 $$(".gn-tabs .tab[data-cat]").forEach(tab=>{
   tab.addEventListener("click", ()=>{
@@ -246,7 +244,7 @@ $("#heroNext")?.addEventListener("click", ()=> updateHero(state.hero.index+1));
 $("#hero")?.addEventListener("mouseenter", ()=> state.hero.pause = true);
 $("#hero")?.addEventListener("mouseleave", ()=> state.hero.pause = false);
 
-/* Sign-in modal */
+/* Sign-in */
 const modal = $("#signinModal");
 $("#avatarBtn")?.addEventListener("click", ()=>{
   $("#prefName").value = state.profile?.name || "";
@@ -270,8 +268,8 @@ document.getElementById("year").textContent = new Date().getFullYear();
 applyTheme();
 $("#briefingDate").textContent = todayStr();
 getWeather();
-loadAll();
-loadMarkets();                 // ticker (client-only)
+loadMarkets();   // ticker (same API your project already uses)
+loadAll();       // loads news, topics, etc.
 startHeroAuto();
 setInterval(loadAll, 1000*60*5);
 setInterval(loadMarkets, 1000*60*5);
