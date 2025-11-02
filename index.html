@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
+  <!-- Header -->
   <header class="gn-header">
     <div class="gn-topbar">
       <div class="gn-logo">Informed360</div>
@@ -42,13 +43,14 @@
     </nav>
   </header>
 
-  <!-- Briefing row (Grid Location 3 in the center) -->
+  <!-- Briefing: Date • Mood+Ticker • Weather -->
   <section class="gn-briefing">
     <div class="briefing-left">
       <h1 class="display-title">Your briefing</h1>
       <div id="briefingDate" class="briefing-date"></div>
     </div>
 
+    <!-- GRID LOCATION 3 (center): two rows -->
     <div class="briefing-center">
       <div id="moodStrip" class="mood-strip" aria-live="polite"></div>
       <div id="marketTicker" class="ticker" aria-live="polite"></div>
@@ -57,14 +59,19 @@
     <div id="weatherCard" class="weather-card" aria-live="polite"></div>
   </section>
 
+  <!-- 3-column layout -->
   <main class="layout">
+    <!-- LEFT: PINNED as a block card with separators -->
     <aside class="left">
       <div class="block-card">
-        <div class="block-header"><span class="block-title">Pinned</span></div>
+        <div class="block-header">
+          <span class="block-title">Pinned</span>
+        </div>
         <div id="pinned" class="block-list"></div>
       </div>
     </aside>
 
+    <!-- CENTER: HERO + NEWS -->
     <section class="center">
       <section id="hero" class="hero-carousel" aria-roledescription="carousel">
         <div class="hero-track" id="heroTrack" role="group"></div>
@@ -86,9 +93,12 @@
       </div>
     </section>
 
+    <!-- RIGHT: TRENDING + DAILY -->
     <aside class="right">
       <div class="block-card">
-        <div class="block-header"><span class="block-title">Trending topics</span></div>
+        <div class="block-header">
+          <span class="block-title">Trending topics</span>
+        </div>
         <div id="topicsList" class="block-list"></div>
       </div>
 
@@ -101,11 +111,16 @@
     <span>© <span id="year"></span> Informed360 — Indian news & sentiment.</span>
   </footer>
 
+  <!-- Sign-in modal -->
   <dialog id="signinModal" class="modal">
     <form method="dialog" class="modal-card" id="signinForm">
       <h3 class="display-title">Sign in & preferences</h3>
-      <label> Name <input type="text" id="prefName" placeholder="Your name"/></label>
-      <label> City <input type="text" id="prefCity" placeholder="e.g., Mumbai"/></label>
+      <label> Name
+        <input type="text" id="prefName" placeholder="Your name"/>
+      </label>
+      <label> City
+        <input type="text" id="prefCity" placeholder="e.g., Mumbai"/>
+      </label>
       <fieldset>
         <legend>Interests</legend>
         <div class="grid-2">
