@@ -1,10 +1,12 @@
-// Shared helpers for API routes — no fs, import the feeds JSON so Vercel bundles it
+// api/_utils.js
 import Parser from "rss-parser";
 import vader from "vader-sentiment";
-import feeds from "../rss-feeds.json" assert { type: "json" }; // <-- bundled automatically
+import feedsConfig from "../rss-feeds.json" assert { type: "json" };
 
-export function allowOrigin(_req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+export function allowOrigin(req, res) {
+  // Loosened to avoid accidental blocks; tighten later if you want.
+  const o = req.headers.origin;
+  res.setHeader("Access-Control-Allow-Origin", o || "*");
 }
 
 const parser = new Parser({
@@ -15,23 +17,23 @@ const parser = new Parser({
   }
 });
 
-function clean(s = "") {
-  return String(s).replace(/\s+/g, " ").trim();
-}
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const domainFromUrl = (u="") => { try { return new URL(u).hostname.replace(/^www\./,""); } catch { return ""; } };
+const clean = s => String(s || "").replace(/\s+/g, " ").trim();
 
-function scoreSentiment(text = "") {
-  const s = vader.SentimentIntensityAnalyzer.polarity_scores(text || "");
-  const posP = Math.max(0, Math.round(s.pos * 100));
-  const negP = Math.max(0, Math.round(s.neg * 100));
-  const neuP = Math.max(0, Math.round(s.neu * 100));
-  const label = posP > negP ? "positive" : (negP > posP ? "negative" : "neutral");
+function scoreSentiment(text="") {
+  const s = vader.SentimentIntensityAnalyzer.polarity_scores(text);
+  const posP = Math.round((s.pos || 0) * 100);
+  const negP = Math.round((s.neg || 0) * 100);
+  const neuP = Math.max(0, 100 - posP - negP);
+  const label = s.compound >= 0.05 ? "positive" : (s.compound <= -0.05 ? "negative" : "neutral");
   return { ...s, posP, negP, neuP, label };
 }
 
 function extractImage(item = {}) {
   const c = item.content || item["content:encoded"];
-  const tries = [item.enclosure?.url, item.media?.content?.url, item.image?.url];
-  for (const u of tries) if (u && typeof u === "string") return u;
+  const tryFields = [item.enclosure?.url, item.media?.content?.url, item.image?.url];
+  for (const url of tryFields) if (url && typeof url === "string") return url;
   if (typeof c === "string") {
     const m = c.match(/<img[^>]+src="([^"]+)"/i);
     if (m) return m[1];
@@ -39,61 +41,88 @@ function extractImage(item = {}) {
   return "https://placehold.co/800x450?text=Informed360";
 }
 
+export function loadFeeds() {
+  // Your rss-feeds.json structure: { feeds:[...], experimental:[...], ... }
+  return Array.isArray(feedsConfig.feeds) ? feedsConfig.feeds : [];
+}
+
+const CAT_RULES = [
+  { name: "business", rx: /\b(stock|market|ipo|revenue|profit|loss|merger|acquisition|company|share|sector)\b/i },
+  { name: "sports",   rx: /\b(cricket|football|ipl|t20|fifa|match|score|tournament)\b/i },
+  { name: "tech",     rx: /\b(tech|ai|software|app|android|iphone|apple|google|microsoft|chip|semiconductor)\b/i },
+  { name: "politics", rx: /\b(minister|election|policy|parliament|bill|government)\b/i },
+  { name: "world",    rx: /\b(world|us|china|russia|global|international)\b/i }
+];
+function guessCategory(title="") {
+  for (const r of CAT_RULES) if (r.rx.test(title)) return r.name;
+  return "general";
+}
+
 export async function fetchAllArticles({ filterLabel = "all" } = {}) {
+  const feeds = loadFeeds();
   const articles = [];
 
-  for (const f of feeds) {
+  for (const url of feeds) {
     try {
-      const feed = await parser.parseURL(f.url);
-      for (const item of feed.items.slice(0, 15)) {
-        const title = clean(item.title || "");
+      const feed = await parser.parseURL(url);
+      for (const item of (feed.items || []).slice(0, 15)) {
+        const title = clean(item.title);
         const link = item.link || "";
         const image = extractImage(item);
         const publishedAt = item.isoDate || item.pubDate || new Date().toISOString();
-        const source = f.name || feed.title || "Source";
-        const category = f.category || "general";
-        const sentiment = scoreSentiment(title);
-        const row = { title, link, image, publishedAt, source, sentiment, category };
-        if (filterLabel === "all" || row.sentiment.label === filterLabel) articles.push(row);
+        const source = domainFromUrl(url) || (feed.title || "Source");
+        const s = scoreSentiment(title);
+        const row = {
+          title, link, image, publishedAt, source,
+          sentiment: s,
+          category: guessCategory(title)
+        };
+        if (filterLabel === "all" || row.sentiment.label === filterLabel) {
+          articles.push(row);
+        }
       }
+      // tiny jitter to be polite to hosts
+      await sleep(30);
     } catch {
-      // skip failing feed
+      // ignore broken feed and continue
     }
   }
 
-  articles.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-  return articles;
+  // de-dup by URL (without querystrings)
+  const seen = new Set(); const out = [];
+  for (const a of articles) {
+    const key = (a.link || "").split("?")[0];
+    if (!seen.has(key)) { seen.add(key); out.push(a); }
+  }
+  out.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
+  return out.slice(0, 80);
 }
 
 export function aggregateTopics(articles = []) {
-  const freq = new Map();
-  const bucket = new Map();
-  const sent = new Map();
+  const freq = new Map(); const buckets = new Map(); const sentSum = new Map();
 
-  articles.forEach((a, idx) => {
+  articles.forEach((a, i) => {
     const words = a.title.split(/[^A-Za-z0-9]+/g).filter(w => w.length > 3).slice(0, 8);
     words.forEach(w => {
       const key = w.toLowerCase();
       freq.set(key, (freq.get(key) || 0) + 1);
-      if (!bucket.has(key)) bucket.set(key, []);
-      bucket.get(key).push(idx);
-      const agg = sent.get(key) || { pos: 0, neu: 0, neg: 0 };
-      sent.set(key, { pos: agg.pos + a.sentiment.posP, neu: agg.neu + a.sentiment.neuP, neg: agg.neg + a.sentiment.negP });
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(i);
+      const agg = sentSum.get(key) || { pos:0, neu:0, neg:0 };
+      sentSum.set(key, { pos: agg.pos + a.sentiment.posP, neu: agg.neu + a.sentiment.neuP, neg: agg.neg + a.sentiment.negP });
     });
   });
 
-  return [...freq.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 16)
-    .map(([word, count]) => {
-      const idxs = bucket.get(word) || [];
-      const srcs = new Set(idxs.map(i => articles[i].source));
-      return {
-        title: word.toUpperCase(),
-        count,
-        sources: srcs.size,
-        sentiment: sent.get(word) || { pos: 0, neu: 0, neg: 0 },
-        sample: idxs.slice(0, 3).map(i => articles[i])
-      };
-    });
+  const top = [...freq.entries()].sort((a,b)=>b[1]-a[1]).slice(0, 16);
+  return top.map(([word, count]) => {
+    const idxs = buckets.get(word) || [];
+    const srcs = new Set(idxs.map(i => articles[i].source));
+    return {
+      title: word.toUpperCase(),
+      count,
+      sources: srcs.size,
+      sentiment: sentSum.get(word) || {pos:0, neu:0, neg:0},
+      sample: idxs.slice(0,3).map(i => articles[i])
+    };
+  });
 }
