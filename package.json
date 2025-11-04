@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "echo \"static\"",
-    "start": "echo \"static\""
-  },
   "dependencies": {
     "rss-parser": "^3.13.0",
     "vader-sentiment": "^1.1.3",
     "yahoo-finance2": "^2.7.5"
+  },
+  "scripts": {
+    "build": "echo \"static\"",
+    "start": "echo \"static\""
   }
 }
